@@ -1,0 +1,180 @@
+/ip route add check-gateway=ping distance=1 gateway=192.168.9.1 routing-mark=ICMP
+/ip route add check-gateway=ping distance=1 gateway=192.168.9.1 routing-mark=Routing-Game
+/ip route add check-gateway=ping distance=1 gateway=192.168.8.1
+/
+
+/ip firewall address-list add address=192.168.0.0/16 list=LOKAL
+/ip firewall address-list add address=172.16.0.0/12 list=LOKAL
+/ip firewall address-list add address=10.0.0.0/8 list=LOKAL
+/
+
+/ip dhcp-client add disabled=no interface=ether1-ISPUMUM
+/ip dhcp-client add add-default-route=no disabled=no interface=ether2-ISPGAME
+/
+
+/system scheduler add interval=1m name=autoremovehs on-event="/queue simple remove [ find name ~\"hs-<\" ]\r\
+    \n/queue simple move [find name=\"-> GLOBAL CONNECTION\"] [:pick [find] 0]" policy=ftp,reboot,read,write,policy,test,password,sniff,sensitive,romon start-date=feb/21/1993 start-time=10:43:00
+/system scheduler add name=datetime-startup on-event="/sys scr run datetime" policy=ftp,reboot,read,write,policy,test,password,sniff,sensitive,romon start-time=startup
+/system scheduler add interval=5m name=datetime on-event=":local date [/sys clock get date]; \r\
+    \n:local time [/sys clock get time]; \r\
+    \n/sys scr set source=\"/sys clock set date=\$date time=\$time\" [find where name=datetime];" policy=ftp,reboot,read,write,policy,test,password,sniff,sensitive,romon start-date=feb/21/1993 start-time=16:44:58
+/system scheduler add interval=3h name=FlushDNSCache on-event="/ip dns cache flush" policy=ftp,reboot,read,write,policy,test,password,sniff,sensitive,romon start-date=feb/21/1993 start-time=20:04:00
+/
+
+/system script add dont-require-permissions=no name=datetime owner=admin policy=ftp,reboot,read,write,policy,test,password,sniff,sensitive,romon source="/sys clock set date=jan/24/2021 time=05:19:58"
+/
+
+/ip dns set servers=1.1.1.1,1.0.0.1
+/
+
+/system ntp client set enabled=yes primary-ntp=202.65.114.202 secondary-ntp=212.26.18.41 server-dns-names=asia.pool.ntp.org
+/
+
+/ip firewall filter add action=accept chain=input comment="Allow Established, Related Connections" connection-state=established,related
+/ip firewall filter add action=accept chain=forward connection-state=established,related
+/ip firewall filter add action=drop chain=input comment="Drop Invalid Connections" connection-state=invalid
+/ip firewall filter add action=drop chain=forward connection-state=invalid
+/
+
+/interface list add name=WAN
+/interface list member add interface=ether1-ISPUMUM list=WAN
+/interface list member add interface=ether2-ISPGAME list=WAN
+/
+
+/ip firewall nat add action=masquerade chain=srcnat out-interface=ether1-ISPUMUM
+/ip firewall nat add action=masquerade chain=srcnat src-address-list=LOKAL
+/ip firewall nat add action=masquerade chain=srcnat out-interface-list=WAN
+/
+
+/ip firewall mangle add action=accept chain=prerouting comment="[ Copyright \A9 2 ISP Script Proudly Presents by Pejuang GSM ]" dst-address-list=LOKAL src-address-list=LOKAL
+/ip firewall mangle add action=accept chain=postrouting dst-address-list=LOKAL src-address-list=LOKAL
+/ip firewall mangle add action=accept chain=forward dst-address-list=LOKAL src-address-list=LOKAL
+/ip firewall mangle add action=accept chain=input dst-address-list=LOKAL src-address-list=LOKAL
+/ip firewall mangle add action=accept chain=output dst-address-list=LOKAL src-address-list=LOKAL
+/ip firewall mangle add action=mark-connection chain=prerouting comment=DNS dst-port=53 new-connection-mark="KONEKSI DNS" passthrough=yes protocol=udp
+/ip firewall mangle add action=mark-packet chain=prerouting connection-mark="KONEKSI DNS" new-packet-mark="DNS UPLOAD" passthrough=no
+/ip firewall mangle add action=mark-packet chain=postrouting connection-mark="KONEKSI DNS" new-packet-mark="DNS DOWNLOAD" passthrough=no
+/ip firewall mangle add action=change-dscp chain=prerouting comment=ICMP new-dscp=1 passthrough=yes protocol=icmp
+/ip firewall mangle add action=mark-connection chain=prerouting new-connection-mark="KONEKSI ICMP" passthrough=yes protocol=icmp
+/ip firewall mangle add action=mark-packet chain=prerouting connection-mark="KONEKSI ICMP" dst-address-list=!LOKAL new-packet-mark="ICMP UPLOAD" passthrough=yes src-address-list=LOKAL
+/ip firewall mangle add action=mark-packet chain=postrouting connection-mark="KONEKSI ICMP" dst-address-list=LOKAL new-packet-mark="ICMP DOWNLOAD" passthrough=yes src-address-list=!LOKAL
+/ip firewall mangle add action=add-dst-to-address-list address-list=IP-GAME address-list-timeout=1m chain=prerouting comment=GAME connection-mark="!KONEKSI CHAT" dst-address-list=!IP-UMUM dst-port=!21,22,23,53,80,81,88,182,443,843,1935,5050,8000-8081,8777 protocol=tcp src-address-list=LOKAL
+/ip firewall mangle add action=add-dst-to-address-list address-list=IP-GAME address-list-timeout=1m chain=prerouting connection-mark="!KONEKSI CHAT" dst-address-list=!IP-UMUM dst-port=!21,22,23,53,80,81,88,182,443,843,1935,5050,8000-8081,8777 protocol=udp src-address-list=LOKAL
+/ip firewall mangle add action=mark-connection chain=prerouting dst-address-list=IP-GAME new-connection-mark="KONEKSI GAME" passthrough=yes
+/ip firewall mangle add action=mark-packet chain=forward connection-mark="KONEKSI GAME" in-interface-list=WAN new-packet-mark="GAME DOWNLOAD" passthrough=yes
+/ip firewall mangle add action=mark-packet chain=forward connection-mark="KONEKSI GAME" new-packet-mark="GAME UPLOAD" out-interface-list=WAN passthrough=yes
+/ip firewall mangle add action=mark-connection chain=prerouting comment=UMUM connection-mark="!KONEKSI GAME" dst-address-list=!IP-GAME new-connection-mark="KONEKSI UTAMA" passthrough=yes protocol=!icmp src-address-list=LOKAL
+/ip firewall mangle add action=mark-packet chain=forward connection-mark="KONEKSI UTAMA" in-interface-list=WAN new-packet-mark="UMUM DOWNLOAD" passthrough=yes
+/ip firewall mangle add action=mark-packet chain=forward connection-mark="KONEKSI UTAMA" new-packet-mark="UMUM UPLOAD" out-interface-list=WAN passthrough=yes
+/ip firewall mangle add action=add-dst-to-address-list address-list=IP-YOUTUBE address-list-timeout=10s chain=prerouting connection-mark="KONEKSI UTAMA" connection-rate=512k-999M dst-address-list=!IP-GAME dst-port=443 protocol=udp src-address-list=LOKAL
+/ip firewall mangle add action=mark-connection chain=prerouting comment=HIGH connection-mark="KONEKSI GAME" connection-rate=250k-999M new-connection-mark="KONEKSI HIGH" passthrough=yes
+/ip firewall mangle add action=mark-packet chain=forward connection-mark="KONEKSI HIGH" in-interface-list=WAN new-packet-mark="HIGH DOWNLOAD" passthrough=yes
+/ip firewall mangle add action=mark-packet chain=forward connection-mark="KONEKSI HIGH" new-packet-mark="HIGH UPLOAD" out-interface-list=WAN passthrough=yes
+/ip firewall mangle add action=mark-connection chain=prerouting connection-mark="KONEKSI HIGH" connection-rate=0-250k new-connection-mark="KONEKSI GAME" passthrough=yes
+/ip firewall mangle add action=mark-connection chain=prerouting comment=CHAT dst-address-list=IP-CHAT new-connection-mark="KONEKSI CHAT" passthrough=yes
+/ip firewall mangle add action=mark-packet chain=forward connection-mark="KONEKSI CHAT" in-interface-list=WAN new-packet-mark="CHAT DOWNLOAD" passthrough=yes
+/ip firewall mangle add action=mark-packet chain=forward connection-mark="KONEKSI CHAT" new-packet-mark="CHAT UPLOAD" out-interface-list=WAN passthrough=yes
+/ip firewall mangle add action=mark-connection chain=prerouting comment=SOSMED dst-address-list=IP-SOSMED new-connection-mark="KONEKSI SOSMED" passthrough=yes
+/ip firewall mangle add action=mark-packet chain=forward connection-mark="KONEKSI SOSMED" in-interface-list=WAN new-packet-mark="SOSMED DOWNLOAD" passthrough=yes
+/ip firewall mangle add action=mark-packet chain=forward connection-mark="KONEKSI SOSMED" new-packet-mark="SOSMED UPLOAD" out-interface-list=WAN passthrough=yes
+/ip firewall mangle add action=mark-connection chain=prerouting comment=YOUTUBE dst-address-list=IP-YOUTUBE new-connection-mark="KONEKSI YOUTUBE" passthrough=yes
+/ip firewall mangle add action=mark-packet chain=forward connection-mark="KONEKSI YOUTUBE" in-interface-list=WAN new-packet-mark="YOUTUBE DOWNLOAD" passthrough=yes
+/ip firewall mangle add action=mark-packet chain=forward connection-mark="KONEKSI YOUTUBE" new-packet-mark="YOUTUBE UPLOAD" out-interface-list=WAN passthrough=yes
+/ip firewall mangle add action=mark-connection chain=prerouting comment=SPEEDTEST dst-address-list=IP-SPEEDTEST new-connection-mark="KONEKSI SPEEDTEST" passthrough=yes
+/ip firewall mangle add action=mark-packet chain=forward connection-mark="KONEKSI SPEEDTEST" in-interface-list=WAN new-packet-mark="SPEEDTEST DOWNLOAD" passthrough=yes
+/ip firewall mangle add action=mark-packet chain=forward connection-mark="KONEKSI SPEEDTEST" new-packet-mark="SPEEDTEST UPLOAD" out-interface-list=WAN passthrough=yes
+/ip firewall mangle add action=mark-routing chain=prerouting comment=ROUTING dst-address-list=!LOKAL new-routing-mark=ICMP passthrough=yes protocol=icmp src-address-list=LOKAL
+/ip firewall mangle add action=mark-routing chain=prerouting dst-address-list=IP-GAME new-routing-mark=Routing-Game passthrough=yes src-address-list=LOKAL
+/
+
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-GAME address-list-timeout=6h chain=prerouting comment="MOBILE LEGENDS" dst-address-list=!LOKAL dst-port=5001-5009,5050-5057,5153,5228,5500-5700,8001,9000-9010,10003,30000-30300 protocol=tcp src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-GAME address-list-timeout=6h chain=prerouting dst-address-list=!LOKAL dst-port=5000-5200,5501-5530,5601-5650,5500-5700,8001,9000-9010,9992,30000-30300 protocol=udp src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-GAME address-list-timeout=6h chain=prerouting comment=FREEFIRE dst-address-list=!LOKAL dst-port=6006,6674,7006,7889,8001-8012,9006,10006,10012,11006,12006,13006,39003,39698,39800 protocol=tcp src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-GAME address-list-timeout=6h chain=prerouting dst-address-list=!LOKAL dst-port=2000,6006,6008,7008,8008,9008,10001-10008,10012,10100,11008,12008,13008,20001 protocol=udp src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-GAME address-list-timeout=6h chain=prerouting comment=PUBG dst-address-list=!LOKAL dst-port=1400,3013,7889,10012,13004,15692,17000,17500,18081,20000-20002,20371 protocol=tcp src-address-list=LOKAL src-port=""
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-GAME address-list-timeout=6h chain=prerouting dst-address-list=!LOKAL dst-port=8011,8700,9030,9031,10010,10013,10020-10040,10096,10491,10612,11455,12235,13748 protocol=udp src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-GAME address-list-timeout=6h chain=prerouting dst-address-list=!LOKAL dst-port=7086-7995,10263,12070-12460,13894,13972,17000,17500,20000-20002,41182-42474 protocol=udp src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-GAME address-list-timeout=6h chain=prerouting comment=COD dst-address-list=!LOKAL dst-port=3013,8013,8085,10000-10020,18082,50000,65010,65050 protocol=tcp src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-GAME address-list-timeout=6h chain=prerouting dst-address-list=!LOKAL dst-port=7085-7995,7500-7700,8700,9030,10010-10019,17000-20100 protocol=udp src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-GAME address-list-timeout=6h chain=prerouting comment="POINT BLANK MOBILE" dst-address-list=!LOKAL dst-port=44590-44610 protocol=tcp src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-GAME address-list-timeout=6h chain=prerouting comment=AOV dst-address-list=!LOKAL dst-port=3013,8081,8085,10000-10094,18082,20000,31003,40000 protocol=tcp src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-GAME address-list-timeout=6h chain=prerouting dst-address-list=!LOKAL dst-port=10101-10201,10080-10110,17000-18000 protocol=udp src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-GAME address-list-timeout=6h chain=prerouting comment="GENSHIN IMPACT" dst-address-list=!LOKAL dst-port=1935,3478-3480,6667,12400,28910,29900-29901,29920,42472 protocol=tcp src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-GAME address-list-timeout=6h chain=prerouting dst-address-list=!LOKAL dst-port=3074,3478-3479,22101-22102,42472 protocol=udp src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-GAME address-list-timeout=6h chain=prerouting comment=COC dst-address-list=!LOKAL dst-port=9330-9340 protocol=tcp src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-CHAT address-list-timeout=6h chain=prerouting comment="CHAT / VoIP" dst-address-list=!LOKAL dst-port=4244,5222,5223,5228,5242,5349,50318,59234 protocol=tcp src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-CHAT address-list-timeout=6h chain=prerouting dst-address-list=!LOKAL dst-port=3478,34784,45395,50318,59234 protocol=udp src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-CHAT address-list-timeout=6h chain=prerouting dst-address-list=!LOKAL dst-port=5060,5061 protocol=udp src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-CHAT address-list-timeout=6h chain=prerouting content=whatsapp dst-address-list=!LOKAL src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-UMUM address-list-timeout=1d chain=prerouting comment="ZOOM CONFERENCE " dst-address-list=!LOKAL dst-port=3478,3479,5090,5091,8801-8810 protocol=tcp src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-UMUM address-list-timeout=1d chain=prerouting content=zoom.us dst-address-list=!LOKAL src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-UMUM address-list-timeout=1d chain=prerouting comment="GOOGLE MEET" dst-address-list=!LOKAL dst-port=19305,19302 protocol=tcp src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-UMUM address-list-timeout=1d chain=prerouting content=meetings dst-address-list=!LOKAL src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-UMUM address-list-timeout=1d chain=prerouting content=hangouts dst-address-list=!LOKAL src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-UMUM address-list-timeout=1d chain=prerouting content=firebaseinstallations dst-address-list=!LOKAL src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-UMUM address-list-timeout=1d chain=prerouting content=meet.google dst-address-list=!LOKAL src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-UMUM address-list-timeout=1d chain=prerouting comment="TEAMVIEWER / ULTRAVIEWER / ANYDESK" dst-address-list=!LOKAL dst-port=5938,6568,7070,2112 protocol=tcp src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-UMUM address-list-timeout=1d chain=prerouting dst-address-list=!LOKAL dst-port=5938,6568,7070,2112 protocol=udp src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-UMUM address-list-timeout=1d chain=prerouting content=anydesk dst-address-list=!LOKAL src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-YOUTUBE address-list-timeout=6h chain=prerouting comment=YOUTUBE content=youtube dst-address-list=!LOKAL src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-YOUTUBE address-list-timeout=6h chain=prerouting content=googlevideo dst-address-list=!LOKAL src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-YOUTUBE address-list-timeout=6h chain=prerouting content=ytimg dst-address-list=!LOKAL src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-SOSMED address-list-timeout=6h chain=prerouting comment=SOSMED content=facebook dst-address-list=!LOKAL src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-SOSMED address-list-timeout=6h chain=prerouting content=instagram dst-address-list=!LOKAL src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-SOSMED address-list-timeout=6h chain=prerouting content=cdninstagram dst-address-list=!LOKAL src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-SOSMED address-list-timeout=6h chain=prerouting content=fbsbx dst-address-list=!LOKAL src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-SOSMED address-list-timeout=6h chain=prerouting content=fbcdn dst-address-list=!LOKAL src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-SOSMED address-list-timeout=6h chain=prerouting content=twitter dst-address-list=!LOKAL src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-SOSMED address-list-timeout=6h chain=prerouting content=twimg dst-address-list=!LOKAL src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-SOSMED address-list-timeout=6h chain=prerouting content=telegram dst-address-list=!LOKAL src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-SOSMED address-list-timeout=6h chain=prerouting content=tiktokcdn dst-address-list=!LOKAL src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-SOSMED address-list-timeout=6h chain=prerouting content=tiktokv dst-address-list=!LOKAL src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-SOSMED address-list-timeout=6h chain=prerouting content=tiktok dst-address-list=!LOKAL src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-SOSMED address-list-timeout=6h chain=prerouting content=ibytedtos dst-address-list=!LOKAL src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-SOSMED address-list-timeout=6h chain=prerouting content=byteoversea dst-address-list=!LOKAL src-address-list=LOKAL
+/ip firewall raw add action=add-dst-to-address-list address-list=IP-SPEEDTEST address-list-timeout=6h chain=prerouting comment=SPEEDTEST content=speedtest dst-address-list=!LOKAL src-address-list=LOKAL
+/
+
+/queue type add kind=pcq name=pcq-download-unlimited pcq-classifier=dst-address pcq-dst-address6-mask=64 pcq-rate=10M pcq-src-address6-mask=64
+/queue type add kind=pcq name=pcq-upload-unlimited pcq-classifier=src-address pcq-dst-address6-mask=64 pcq-rate=10M pcq-src-address6-mask=64
+/queue type add kind=pcq name=pcq-download-small pcq-classifier=dst-address pcq-dst-address6-mask=64 pcq-limit=10KiB pcq-src-address6-mask=64
+/queue type add kind=pcq name=pcq-upload-small pcq-classifier=src-address pcq-dst-address6-mask=64 pcq-limit=10KiB pcq-src-address6-mask=64
+/
+
+/queue simple add comment="[ Copyright \A9 2 ISP Script Proudly Presents by Pejuang GSM ]" name="-> GLOBAL CONNECTION" queue=default/default target=192.168.2.0/24,192.168.3.0/24,192.168.4.0/24
+/queue simple add name="1. ICMP [ping] + DNS [53]" packet-marks="ICMP UPLOAD,ICMP DOWNLOAD,DNS UPLOAD,DNS DOWNLOAD" parent="-> GLOBAL CONNECTION" priority=2/2 queue=pcq-upload-small/pcq-download-small target=192.168.2.0/24,192.168.3.0/24,192.168.4.0/24
+/queue simple add name="2. GAME" packet-marks="GAME UPLOAD,GAME DOWNLOAD" parent="-> GLOBAL CONNECTION" priority=1/1 queue=pcq-upload-small/pcq-download-small target=192.168.2.0/24,192.168.3.0/24,192.168.4.0/24
+/queue simple add name="3. Chat / VoIP" packet-marks="CHAT UPLOAD,CHAT DOWNLOAD" parent="-> GLOBAL CONNECTION" priority=1/1 queue=pcq-upload-unlimited/pcq-download-unlimited target=192.168.2.0/24,192.168.3.0/24,192.168.4.0/24
+/queue simple add name="4. ALL CONNECTION" packet-marks="UMUM UPLOAD,UMUM DOWNLOAD,SOSMED UPLOAD,SOSMED DOWNLOAD,YOUTUBE UPLOAD,YOUTUBE DOWNLOAD,SPEEDTEST UPLOAD,SPEEDTEST DOWNLOAD,HIGH UPLOAD,HIGH DOWNLOAD" parent="-> GLOBAL CONNECTION" priority=3/3 queue=pcq-upload-default/pcq-download-default target=192.168.2.0/24,192.168.3.0/24,192.168.4.0/24
+/queue simple add name="CLIENT ETH./LAN" parent="4. ALL CONNECTION" queue=default/default target=192.168.2.0/24
+/queue simple add name="CLIENT HOTSPOT" parent="4. ALL CONNECTION" queue=default/default target=192.168.3.0/24
+/queue simple add name="CLIENT RUMAHAN & PPPOE" parent="4. ALL CONNECTION" queue=default/default target=192.168.4.0/24
+/queue simple add name="PC PRIBADI" parent="CLIENT ETH./LAN" queue=default/default target=192.168.2.254/32
+/ip hotspot user profile { set [find] parent="CLIENT HOTSPOT" transparent-proxy=no insert-queue-before=bottom }
+/ppp profile { set [find] parent="CLIENT RUMAHAN & PPPOE" insert-queue-before=bottom }
+/
+
+/queue tree add comment="[ Copyright \A9 2 ISP Script Proudly Presents by Pejuang GSM ]" name="-> GLOBAL CONNECTION" parent=global queue=default
+/queue tree add max-limit=100M name="INBOUND PACKET" parent="-> GLOBAL CONNECTION" queue=default
+/queue tree add max-limit=100M name="OUTBOND PACKET" parent="-> GLOBAL CONNECTION" queue=default
+/queue tree add name="2. PING [icmp] Download" packet-mark="ICMP DOWNLOAD" parent="INBOUND PACKET" priority=2 queue=pcq-download-small
+/queue tree add name="2. PING (icmp) Upload" packet-mark="ICMP UPLOAD" parent="OUTBOND PACKET" priority=2 queue=pcq-upload-small
+/queue tree add name="1. Game Download" packet-mark="GAME DOWNLOAD" parent="INBOUND PACKET" priority=1 queue=pcq-download-small
+/queue tree add name="1. Game Upload" packet-mark="GAME UPLOAD" parent="OUTBOND PACKET" priority=1 queue=pcq-upload-small
+/queue tree add max-limit=15M name="4. All Download" parent="INBOUND PACKET" priority=3 queue=pcq-download-default
+/queue tree add max-limit=10M name="4. All Upload" parent="OUTBOND PACKET" priority=3 queue=pcq-upload-default
+/queue tree add name="3. DNS [53] Download" packet-mark="DNS DOWNLOAD" parent="INBOUND PACKET" priority=2 queue=pcq-download-small
+/queue tree add name="3. DNS [53] Upload" packet-mark="DNS UPLOAD" parent="OUTBOND PACKET" priority=2 queue=pcq-upload-small
+/queue tree add name="4. Umum Download" packet-mark="UMUM DOWNLOAD" parent="4. All Download" priority=5 queue=pcq-download-default
+/queue tree add name="5. High Upload" packet-mark="HIGH UPLOAD" parent="4. All Upload" priority=5 queue=pcq-upload-default
+/queue tree add name="1. Chat / VoIP Download" packet-mark="CHAT DOWNLOAD" parent="4. All Download" priority=1 queue=pcq-download-unlimited
+/queue tree add name="1. Chat / VoIP Upload" packet-mark="CHAT UPLOAD" parent="4. All Upload" priority=1 queue=pcq-upload-unlimited
+/queue tree add name="3. Youtube Download" packet-mark="YOUTUBE DOWNLOAD" parent="4. All Download" priority=4 queue=pcq-download-default
+/queue tree add name="3. Youtube Upload" packet-mark="YOUTUBE UPLOAD" parent="4. All Upload" priority=4 queue=pcq-upload-default
+/queue tree add name="6. Speedtest Download" packet-mark="SPEEDTEST DOWNLOAD" parent="4. All Download" priority=5 queue=pcq-download-default
+/queue tree add name="6. Speedtest Upload" packet-mark="SPEEDTEST UPLOAD" parent="4. All Upload" priority=5 queue=pcq-upload-default
+/queue tree add name="2. Sosmed Download" packet-mark="SOSMED DOWNLOAD" parent="4. All Download" priority=4 queue=pcq-download-default
+/queue tree add name="2. Sosmed Upload" packet-mark="SOSMED UPLOAD" parent="4. All Upload" priority=4 queue=pcq-upload-default
+/queue tree add name="5. High Download" packet-mark="HIGH DOWNLOAD" parent="4. All Download" priority=5 queue=pcq-download-default
+/queue tree add name="4. Umum Upload" packet-mark="UMUM UPLOAD" parent="4. All Upload" priority=5 queue=pcq-upload-default
+/
