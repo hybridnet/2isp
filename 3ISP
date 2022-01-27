@@ -1,0 +1,245 @@
+/interface list
+add name=Loadbalance
+add name=Hotspot
+
+/queue types
+add kind=pcq name=pcq-download-unlimited pcq-classifier=dst-address,dst-port \
+    pcq-limit=500KiB pcq-rate=1600k pcq-total-limit=20000KiB
+add kind=pcq name=pcq-upload-unlimited pcq-classifier=src-address,src-port \
+    pcq-limit=300KiB pcq-rate=512k pcq-total-limit=12000KiB
+add kind=pcq name=pcq-download-game pcq-classifier=dst-address,dst-port \
+    pcq-rate=200k
+add kind=pcq name=pcq-upload-game pcq-classifier=src-address,src-port \
+    pcq-rate=200k
+set 9 pcq-classifier=src-address,src-port pcq-limit=100KiB pcq-total-limit=\
+    3000KiB
+set 10 pcq-classifier=dst-address,dst-port pcq-limit=200KiB pcq-total-limit=\
+    4000KiB
+
+/queue simple
+add name="All Traffic" queue=default/default target=\
+    192.168.30.0/24
+add max-limit=128k/256k name="01. DNS & ICMP" packet-marks=\
+    "ICMP Package,DNS Package" parent="All Traffic" priority=1/1 queue=\
+    default/default target=192.168.30.0/24
+add name="02. Game Traffic" packet-marks="Packet Game" parent="All Traffic" \
+    priority=1/1 queue=pcq-upload-game/pcq-download-game target=\
+    192.168.30.0/24
+add disabled=yes name="03. Unlimited Apps" packet-marks="Sosmed Package" \
+    parent="All Traffic" queue=pcq-upload-unlimited/pcq-download-unlimited \
+    target=192.168.30.0/24
+add name="04. Client" parent="All Traffic" priority=7/7 queue=\
+    pcq-upload-default/pcq-download-default target=192.168.30.0/24
+
+/ip firewall address-list
+add address=192.168.30.0/24list="IPLOCAL"
+add address=192.168.8.0/24list="IPLOCAL"
+add address=192.168.9.0/24list="IPLOCAL"
+add address=192.168.10.0/24list="IPLOCAL"
+
+
+
+
+
+/ip firewall mangle
+add action=accept chain=input dst-address-list="IP LOCAL" in-interface=\
+    bridge-WIFI src-address-list="IP LOCAL"
+add action=accept chain=output dst-address-list="IP LOCAL" out-interface=\
+    bridge-WIFI src-address-list="IP LOCAL"
+add action=mark-connection chain=prerouting comment="ICMP & DNS" \
+    new-connection-mark="ICMP Con" passthrough=yes protocol=icmp
+add action=mark-packet chain=prerouting connection-mark="ICMP Con" \
+    new-packet-mark="ICMP Package" passthrough=yes
+add action=mark-connection chain=prerouting dst-port=53 new-connection-mark=\
+    "DNS Con" passthrough=yes protocol=udp
+add action=mark-packet chain=prerouting connection-mark="DNS Con" \
+    new-packet-mark="DNS Package" passthrough=yes
+add action=mark-connection chain=forward comment=GAME connection-rate=0-200k \
+    dst-address-list="IP GAME ONLINE" new-connection-mark="Con Game" \
+    passthrough=yes
+add action=mark-packet chain=forward connection-mark="Con Game" \
+    new-packet-mark="Packet Game" passthrough=yes
+add action=mark-routing chain=prerouting comment="Routing Game Berat" \
+    connection-rate=200001-999999999 dst-address-list="IP GAME ONLINE" \
+    dst-address-type=!local hotspot=auth new-routing-mark=ISP-UMUM \
+    passthrough=no
+add action=mark-routing chain=prerouting comment="Routing Game" \
+    connection-rate=0-200k dst-address-list="IP GAME ONLINE" \
+    dst-address-type=!local hotspot=auth new-routing-mark=ISP-GAME \
+    passthrough=no
+add action=mark-routing chain=prerouting comment="Routing Playstore" \
+    dst-address-list=Playstore dst-address-type=!local hotspot=auth \
+    in-interface=bridge-WIFI new-routing-mark=ISP-UMUM passthrough=no \
+    per-connection-classifier=both-addresses-and-ports:1/0
+add action=mark-connection chain=forward comment=Sosmed dst-address-list=\
+    Sosmed in-interface=bridge-WIFI new-connection-mark="Sosmed Con" \
+    passthrough=yes
+add action=mark-packet chain=forward connection-mark="Sosmed Con" \
+    new-packet-mark="Sosmed Package" passthrough=yes
+add action=mark-routing chain=prerouting comment="Routing Sosmed" \
+    dst-address-list=Sosmed dst-address-type=!local hotspot=auth \
+    in-interface=bridge-WIFI new-routing-mark=ISP-UMUM-UNLIMITED passthrough=\
+    no
+add action=change-ttl chain=postrouting comment="CHANGE TTL" new-ttl=set:1 \
+    out-interface=bridge-WIFI passthrough=yes
+
+/ip firewall raw
+add action=add-dst-to-address-list address-list="IP GAME ONLINE" \
+    address-list-timeout=45m chain=prerouting comment="Mobile Legend" \
+    dst-address-list="!IP LOCAL" dst-port=\
+    5001-5059,5501-5520,5551-5559,9000-9010,9443,30020-30220 protocol=tcp \
+    src-address-list="IP LOCAL"
+add action=add-dst-to-address-list address-list="IP GAME ONLINE" \
+    address-list-timeout=45m chain=prerouting dst-address-list="!IP LOCAL" \
+    dst-port=5001-5059,5501-5512,5551-5559,9000-9010,30020-30220 protocol=udp
+add action=add-dst-to-address-list address-list="IP GAME ONLINE" \
+    address-list-timeout=30m45s chain=prerouting content=.ml.youngjoygame.com \
+    disabled=yes dst-address-list="!IP LOCAL" src-address-list="IP LOCAL"
+add action=add-dst-to-address-list address-list="IP GAME ONLINE" \
+    address-list-timeout=25m chain=prerouting comment="FREE FIRE" \
+    dst-address-list="!IP LOCAL" dst-port=6006,7006,6674,7889,8001-8012,9006 \
+    protocol=tcp
+add action=add-dst-to-address-list address-list="IP GAME ONLINE" \
+    address-list-timeout=25m chain=prerouting dst-address-list="!IP LOCAL" \
+    dst-port=11006,12006,13006,39003,39500-40000 protocol=tcp
+add action=add-dst-to-address-list address-list="IP GAME ONLINE" \
+    address-list-timeout=25m chain=prerouting dst-address-list="!IP LOCAL" \
+    dst-port=6008,7008,8006,8008,9006,9008 protocol=udp
+add action=add-dst-to-address-list address-list="IP GAME ONLINE" \
+    address-list-timeout=20m45s chain=prerouting content=.garenanow.com \
+    disabled=yes dst-address-list="!IP LOCAL" src-address-list="IP LOCAL"
+add action=add-dst-to-address-list address-list="IP GAME ONLINE" \
+    address-list-timeout=20m45s chain=prerouting content=.freefiremobile.com \
+    disabled=yes dst-address-list="!IP LOCAL" src-address-list="IP LOCAL"
+add action=add-dst-to-address-list address-list="IP GAME ONLINE" \
+    address-list-timeout=20m45s chain=prerouting content=.garena.com \
+    disabled=yes dst-address-list="!IP LOCAL" src-address-list="IP LOCAL"
+add action=add-dst-to-address-list address-list="IP GAME ONLINE" \
+    address-list-timeout=35m chain=prerouting comment=PUBG dst-address-list=\
+    "!IP LOCAL" dst-port=3013,8082,9001-9035,17000,17500,18081,20000-20002 \
+    protocol=tcp
+add action=add-dst-to-address-list address-list="IP GAME ONLINE" \
+    address-list-timeout=35m chain=prerouting dst-address-list="!IP LOCAL" \
+    dst-port=\
+    3013,8081-8090,9030-9031,15692,17000,17500,18081,20000-20002,20371 \
+    protocol=udp
+add action=add-dst-to-address-list address-list="IP GAME ONLINE" \
+    address-list-timeout=1h5m chain=prerouting comment="General Game Port" \
+    dst-address-list="!IP LOCAL" dst-port=10000-10020 protocol=tcp
+add action=add-dst-to-address-list address-list="IP GAME ONLINE" \
+    address-list-timeout=1h15m chain=prerouting dst-address-list="!IP LOCAL" \
+    dst-port=10000-14000 protocol=udp
+add action=add-dst-to-address-list address-list=Playstore \
+    address-list-timeout=1m chain=prerouting comment=Playstore content=\
+    .gvt1.com dst-address-list="!IP LOCAL"
+add action=add-dst-to-address-list address-list=Playstore \
+    address-list-timeout=1m chain=prerouting content=.gvt2.com \
+    dst-address-list="!IP LOCAL"
+add action=add-dst-to-address-list address-list=Playstore \
+    address-list-timeout=1m chain=prerouting content=.gvt3.com \
+    dst-address-list="!IP LOCAL"
+add action=add-dst-to-address-list address-list=Sosmed address-list-timeout=\
+    1h2m chain=prerouting comment=YouTube content=.googlevideo.com \
+    dst-address-list="!IP LOCAL" src-address-list="IP LOCAL"
+add action=add-dst-to-address-list address-list=Sosmed address-list-timeout=\
+    1h2m chain=prerouting content=.ytimg.com dst-address-list="!IP LOCAL" \
+    src-address-list="IP LOCAL"
+add action=add-dst-to-address-list address-list=Sosmed address-list-timeout=\
+    1h1m30s chain=prerouting comment=Facebook content=.facebook.com \
+    dst-address-list="!IP LOCAL"
+add action=add-dst-to-address-list address-list=Sosmed address-list-timeout=\
+    1h1m30s chain=prerouting content=.fbcdn.net dst-address-list="!IP LOCAL"
+add action=add-dst-to-address-list address-list=Sosmed address-list-timeout=\
+    1h1m30s chain=prerouting content=.fbsbx.com dst-address-list="!IP LOCAL" \
+    src-address-list="IP LOCAL"
+add action=add-dst-to-address-list address-list=Sosmed address-list-timeout=\
+    1m30s chain=prerouting content=.fb.com dst-address-list="!IP LOCAL" \
+    src-address-list="IP LOCAL"
+add action=add-dst-to-address-list address-list=Sosmed address-list-timeout=\
+    1m30s chain=prerouting content=.facebook.net dst-address-list="!IP LOCAL" \
+    src-address-list="IP LOCAL"
+add action=add-dst-to-address-list address-list=Sosmed address-list-timeout=\
+    1m45s chain=prerouting comment=Instagram content=.cdninstagram.com \
+    dst-address-list="!IP LOCAL"
+add action=add-dst-to-address-list address-list=Sosmed address-list-timeout=\
+    1h1m45s chain=prerouting content=.instagram.com dst-address-list=\
+    "!IP LOCAL"
+add action=add-dst-to-address-list address-list=Sosmed address-list-timeout=\
+    30m45s chain=prerouting comment=WhatsApp content=whatsapp.net \
+    dst-address-list="!IP LOCAL" src-address-list="IP LOCAL"
+add action=add-dst-to-address-list address-list=Sosmed address-list-timeout=\
+    1m45s chain=prerouting content=whatsapp.com dst-address-list="!IP LOCAL" \
+    src-address-list="IP LOCAL"
+add action=add-dst-to-address-list address-list=Sosmed address-list-timeout=\
+    1h1m15s chain=prerouting comment=Tiktok content=.tiktokcdn.com \
+    dst-address-list="!IP LOCAL" src-address-list="IP LOCAL"
+add action=add-dst-to-address-list address-list=Sosmed address-list-timeout=\
+    1h1m15s chain=prerouting content=tiktokv.com dst-address-list="!IP LOCAL" \
+    src-address-list="IP LOCAL"
+add action=add-dst-to-address-list address-list=Sosmed address-list-timeout=\
+    1h1m15s chain=prerouting dst-address-list="!IP LOCAL" protocol=tcp \
+    src-address-list="IP LOCAL" tls-host=*.tiktokv.com*
+add action=add-dst-to-address-list address-list=Sosmed address-list-timeout=\
+    1h1m15s chain=prerouting dst-address-list="!IP LOCAL" protocol=tcp \
+    src-address-list="IP LOCAL" tls-host=*.tiktokcdn.com*
+add action=add-dst-to-address-list address-list=Sosmed address-list-timeout=\
+    3m chain=prerouting comment=Viu content=.vuclip.com dst-address-list=\
+    "!IP LOCAL"
+add action=add-dst-to-address-list address-list=Sosmed address-list-timeout=\
+    3m chain=prerouting content=gcpcdn.viu.com dst-address-list="!IP LOCAL"
+add action=add-dst-to-address-list address-list=Sosmed address-list-timeout=\
+    3m chain=prerouting content=viu.com dst-address-list="!IP LOCAL"
+add action=add-dst-to-address-list address-list=Sosmed address-list-timeout=\
+    3m chain=prerouting content=.viu.com dst-address-list="!IP LOCAL"
+add action=add-dst-to-address-list address-list=Sosmed address-list-timeout=\
+    3m chain=prerouting content=vuclip-eip.akamaized.net dst-address-list=\
+    "!IP LOCAL"
+add action=add-dst-to-address-list address-list=Sosmed address-list-timeout=\
+    3m chain=prerouting dst-address-list="!IP LOCAL" protocol=tcp \
+    src-address-list="IP LOCAL" tls-host=*viu.com*
+add action=add-dst-to-address-list address-list=Sosmed address-list-timeout=\
+    3m chain=prerouting dst-address-list="!IP LOCAL" protocol=tcp \
+    src-address-list="IP LOCAL" tls-host=*.viu.com*
+add action=add-dst-to-address-list address-list=Sosmed address-list-timeout=\
+    7m30s chain=prerouting comment=Vidio content=vidio dst-address-list=\
+    "!IP LOCAL"
+add action=add-dst-to-address-list address-list=Sosmed address-list-timeout=\
+    7m30s chain=prerouting comment=Spotify content=spotify dst-address-list=\
+    "!IP LOCAL"
+add action=add-dst-to-address-list address-list=Sosmed address-list-timeout=\
+    10m chain=prerouting comment=Joox content=joox dst-address-list=\
+    "!IP LOCAL"
+add action=add-dst-to-address-list address-list=Sosmed address-list-timeout=\
+    7m30s chain=prerouting comment=Line content=line dst-address-list=\
+    "!IP LOCAL"
+add action=add-dst-to-address-list address-list=Sosmed address-list-timeout=\
+    7m30s chain=prerouting comment=Netflix content=netflix dst-address-list=\
+    "!IP LOCAL"
+add action=add-dst-to-address-list address-list="Market Place" \
+    address-list-timeout=10m chain=prerouting comment="Market Place" content=\
+    tokopedia disabled=yes dst-address-list="!IP LOCAL"
+add action=add-dst-to-address-list address-list="Market Place" \
+    address-list-timeout=10m chain=prerouting content=shoppe disabled=yes \
+    dst-address-list="!IP LOCAL"
+add action=add-dst-to-address-list address-list="Market Place" \
+    address-list-timeout=10m chain=prerouting content=lazada disabled=yes \
+    dst-address-list="!IP LOCAL"
+add action=add-dst-to-address-list address-list="Market Place" \
+    address-list-timeout=10m chain=prerouting content=bukalapak disabled=yes \
+    dst-address-list="!IP LOCAL"
+add action=add-dst-to-address-list address-list="Blok Sosmed" \
+    address-list-timeout=10m chain=prerouting comment="Blok Sosmed" content=\
+    free.facebook.com dst-address-list="!IP LOCAL"
+add action=add-dst-to-address-list address-list="Blok Sosmed" \
+    address-list-timeout=10m chain=prerouting content=0.facebook.com \
+    dst-address-list="!IP LOCAL"
+
+
+/ip route
+add check-gateway=ping distance=1 gateway=192.168.5.1 routing-mark=ISP-UMUM \
+    target-scope=30
+add check-gateway=ping distance=1 gateway=192.168.4.1 routing-mark=ISP-GAME
+add check-gateway=ping distance=1 gateway=192.168.3.1 routing-mark=\
+    ISP-UMUM-UNLIMITED
+add check-gateway=ping distance=3 gateway=192.168.5.1
+
